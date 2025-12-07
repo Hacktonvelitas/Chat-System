@@ -11,23 +11,43 @@ from gemini_client import GeminiClient
 from tavily_service import TavilyService
 
 def setup_cors(app: FastAPI, allow_all: bool = True) -> None:
-    if allow_all and not os.getenv("ALLOWED_ORIGINS"):
+    # If ALLOWED_ORIGINS is set, use it.
+    if os.getenv("ALLOWED_ORIGINS"):
+        origins = [o.strip() for o in os.getenv("ALLOWED_ORIGINS").split(",") if o.strip()]
         app.add_middleware(
             CORSMiddleware,
-            allow_origins=["*"],
-            allow_credentials=False,
+            allow_origins=origins,
+            allow_credentials=True,
             allow_methods=["*"],
             allow_headers=["*"],
         )
         return
 
-    origins = [o.strip() for o in os.getenv("ALLOWED_ORIGINS","").split(",") if o.strip()]
+    # If allow_all is True (default), allow everything.
+    if allow_all:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=["*"],
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+        return
+
+    # Fallback defaults for local development if allow_all is False and no env var
+    default_origins = [
+        "http://localhost", 
+        "http://localhost:8080", 
+        "http://127.0.0.1", 
+        "http://127.0.0.1:8080"
+    ]
+    
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=origins or ["http://localhost","http://127.0.0.1"],
+        allow_origins=default_origins,
         allow_credentials=True,
-        allow_methods=["GET","POST","PATCH","DELETE","PUT","OPTIONS"],
-        allow_headers=["Authorization","Content-Type","If-None-Match","If-Modified-Since","X-Request-Id","X-Idempotency-Key"],
+        allow_methods=["*"],
+        allow_headers=["*"],
     )
 
 app = FastAPI(title="Gemini RAG System", description="Lightweight RAG system using LangChain and Gemini")
@@ -125,7 +145,7 @@ async def chat_endpoint(request: QueryRequest):
     if memory_service:
         memories = memory_service.search(request.text, user_id=request.user_id)
         if memories:
-            memory_context = "\nRelevant Memory:\n" + "\n".join([m['memory'] for m in results])
+            memory_context = "\nRelevant Memory:\n" + "\n".join([m['memory'] for m in memories])
 
     # Append memory to query (simple approach)
     # Or we can pass it as history if LightRAG supports it better.
