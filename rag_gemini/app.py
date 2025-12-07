@@ -1,6 +1,8 @@
+from __future__ import annotations
 import os
 import shutil
 from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from rag_service import RAGService
 
@@ -8,7 +10,49 @@ from memory_service import MemoryService
 from gemini_client import GeminiClient
 from tavily_service import TavilyService
 
+def setup_cors(app: FastAPI, allow_all: bool = True) -> None:
+    # If ALLOWED_ORIGINS is set, use it.
+    if os.getenv("ALLOWED_ORIGINS"):
+        origins = [o.strip() for o in os.getenv("ALLOWED_ORIGINS").split(",") if o.strip()]
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=origins,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+        return
+
+    # If allow_all is True (default), allow everything.
+    if allow_all:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=["*"],
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+        return
+
+    # Fallback defaults for local development if allow_all is False and no env var
+    default_origins = [
+        "http://localhost", 
+        "http://localhost:8080", 
+        "http://127.0.0.1", 
+        "http://127.0.0.1:8080"
+    ]
+    
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=default_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
 app = FastAPI(title="Gemini RAG System", description="Lightweight RAG system using LangChain and Gemini")
+
+setup_cors(app)
 
 # Initialize Services
 rag_service = None
@@ -101,7 +145,7 @@ async def chat_endpoint(request: QueryRequest):
     if memory_service:
         memories = memory_service.search(request.text, user_id=request.user_id)
         if memories:
-            memory_context = "\nRelevant Memory:\n" + "\n".join([m['memory'] for m in results])
+            memory_context = "\nRelevant Memory:\n" + "\n".join([m['memory'] for m in memories])
 
     # Append memory to query (simple approach)
     # Or we can pass it as history if LightRAG supports it better.
